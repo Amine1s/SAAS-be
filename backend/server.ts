@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Product, Invoice, StoreActivity, ChartPoint, Warehouse, Supplier, Customer, Category, StockMovement } from './types';
+import { Product, Invoice, StoreActivity, ChartPoint, Warehouse, Supplier, Customer, Category, StockMovement } from './types.js';
 
 // تحميل متغيرات البيئة من ملف .env
 dotenv.config();
@@ -509,7 +509,11 @@ app.post('/api/stock-movements', (req: Request, res: Response) => {
   res.status(201).json({ success: true, movement: newMov, product: prod });
 });
 
-// بدء تشغيل السيرفر
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Backend Server] Standalone API Server running on port ${PORT}`);
-});
+// start the server only if running on Vercel
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Backend Server] Standalone API Server running on port ${PORT}`);
+  });
+}
+
+export default app;
