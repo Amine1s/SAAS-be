@@ -9,21 +9,18 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
-// تفعيل CORS للسماح لعنوان الفرونت اند بالاتصال بالسيرفر
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-    ],
-    credentials: true,
-  }),
-);
-app.options("*", cors());
+// تفعيل CORS للسماح لجميع المصادر بالاتصال بالسيرفر ومعالجة طلبات OPTIONS Preflight
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+app.use(cors());
+
 
 // دعم قراءة بيانات JSON
 app.use(express.json());
@@ -522,7 +519,7 @@ app.post('/api/stock-movements', (req: Request, res: Response) => {
   res.status(201).json({ success: true, movement: newMov, product: prod });
 });
 
-// start the server only if running on Vercel
+// بدء تشغيل السيرفر (في بيئة التطوير)
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Backend Server] Standalone API Server running on port ${PORT}`);
