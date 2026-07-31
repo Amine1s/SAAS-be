@@ -10,7 +10,20 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
 // تفعيل CORS للسماح لعنوان الفرونت اند بالاتصال بالسيرفر
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+    ],
+    credentials: true,
+  }),
+);
+app.options("*", cors());
 
 // دعم قراءة بيانات JSON
 app.use(express.json());
