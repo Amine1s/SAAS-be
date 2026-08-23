@@ -642,44 +642,44 @@ app.post('/api/warehouses', (req: Request, res: Response) => {
       return;
     }
 
-    if (type === 'in') {
-      prod.quantity += qtyNum;
-    } else {
-      prod.quantity -= qtyNum;
-    }
+   if (type === 'in') {
+    prod.quantity += qtyNum;
+  } else {
+    prod.quantity -= qtyNum;
+  }
 
-    const newMov: StockMovement = {
-      id: `MOV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
-      type,
-      productId,
-      productName: prod.name,
-      quantity: qtyNum,
-      warehouseId,
-      warehouseName: wh.name,
-      notes: notes || '',
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      recordedBy: recordedBy || 'مدير النظام'
-    };
+  const newMov: StockMovement = {
+    id: `MOV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+    type,
+    productId,
+    productName: prod.name,
+    quantity: qtyNum,
+    warehouseId,
+    warehouseName: wh.name,
+    notes: notes || '',
+    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    recordedBy: recordedBy || 'مدير النظام'
+  };
 
-    stockMovements = [newMov, ...stockMovements];
+  stockMovements = [newMov, ...stockMovements];
 
-    // إضافة نشاط
-    const formattedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-    const actMsg = type === 'in' 
-      ? `توريد شحنة منتج "${prod.name}" بمقدار ${qtyNum} وحدة إلى "${wh.name}".`
-      : `صرف/إخراج منتج "${prod.name}" بمقدار ${qtyNum} وحدة من "${wh.name}".`;
-    
-    const newActivity = {
-      id: Math.random().toString(36).substring(2, 9),
-      type: 'stock_update' as const,
-      message: actMsg,
-      timestamp: formattedTime,
-      meta: newMov.id
-    };
-    activities = [newActivity, ...activities];
+  const formattedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  const actMsg = type === 'in' 
+    ? `توريد شحنة منتج "${prod.name}" بمقدار ${qtyNum} وحدة إلى "${wh.name}".`
+    : `صرف/إخراج منتج "${prod.name}" بمقدار ${qtyNum} وحدة من "${wh.name}".`;
+  
+  const newActivity = {
+    id: Math.random().toString(36).substring(2, 9),
+    type: 'stock_update' as const,
+    message: actMsg,
+    timestamp: formattedTime,
+    meta: newMov.id
+  };
+  activities = [newActivity, ...activities];
 
-    res.status(201).json({ success: true, movement: newMov, product: prod });
-  });
+  res.status(201).json({ success: true, movement: newMov, product: prod });
+});
+
 
 
   // -------------------------------------------------------------
