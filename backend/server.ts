@@ -537,4 +537,225 @@ async function startServer() {
     };
 
     suppliers[supIndex] = updatedSupplier;
-    res.j
+    res.json({ success: true, supplier: updatedSupplier });
+  };
+
+  app.put('/api/suppliers/:id', updateSupplierHandler);
+  app.post('/api/suppliers/:id', updateSupplierHandler);
+
+  // -------------------------------------------------------------
+  // 7. مسارات العملاء التجاريين والأفراد (/api/customers)
+  // -------------------------------------------------------------
+
+  app.get('/api/customers', (req, res) => {
+    res.json({ success: true, customers });
+  });
+
+  app.get('/api/customers/:id', (req, res) => {
+    const { id } = req.params;
+    const cust = customers.find(c => c.id === id);
+    if (!cust) {
+      res.status(404).json({ success: false, message: 'العميل المطلوب غير موجود.' });
+      return;
+    }
+    res.json({ success: true, customer: cust });
+  });
+
+  app.post('/api/customers', (req, res) => {
+    const { name, phone, email, taxNumber } = req.body;
+    if (!name) {
+      res.status(400).json({ success: false, message: 'اسم العميل مطلوب.' });
+      return;
+    }
+    const newCustomer: Customer = {
+      id: `CUST-${(customers.length + 1).toString().padStart(2, '0')}`,
+      name: name.trim(),
+      phone: phone?.trim() || '',
+      email: email?.trim() || '',
+      taxNumber: taxNumber?.trim() || ''
+    };
+    customers.push(newCustomer);
+    res.status(201).json({ success: true, customer: newCustomer });
+  });
+
+  const updateCustomerHandler = (req: any, res: any) => {
+    const { id } = req.params;
+    const { name, phone, email, taxNumber } = req.body;
+
+    const custIndex = customers.findIndex(c => c.id === id);
+    if (custIndex === -1) {
+      res.status(404).json({ success: false, message: 'العميل المطلوب تعديله غير موجود.' });
+      return;
+    }
+
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'اسم العميل مطلوب.' });
+      return;
+    }
+
+    const updatedCustomer: Customer = {
+      ...customers[custIndex],
+      name: name.trim(),
+      phone: phone !== undefined ? phone.trim() : customers[custIndex].phone,
+      email: email !== undefined ? email.trim() : customers[custIndex].email,
+      taxNumber: taxNumber !== undefined ? taxNumber.trim() : customers[custIndex].taxNumber
+    };
+
+    customers[custIndex] = updatedCustomer;
+    res.json({ success: true, customer: updatedCustomer });
+  };
+
+  app.put('/api/customers/:id', updateCustomerHandler);
+  app.post('/api/customers/:id', updateCustomerHandler);
+
+  // -------------------------------------------------------------
+  // 8. مسارات فئات وتصنيفات السلع (/api/categories)
+  // -------------------------------------------------------------
+
+  app.get('/api/categories', (req, res) => {
+    res.json({ success: true, categories });
+  });
+
+  app.post('/api/categories', (req, res) => {
+    const { name, description } = req.body;
+    if (!name) {
+      res.status(400).json({ success: false, message: 'اسم التصنيف مطلوب.' });
+      return;
+    }
+    const newCat: Category = {
+      id: `CAT-${(categories.length + 1).toString().padStart(2, '0')}`,
+      name: name.trim(),
+      description: description?.trim() || ''
+    };
+    categories.push(newCat);
+    res.status(201).json({ success: true, category: newCat });
+  });
+
+  app.put('/api/categories/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, description } = req.body;
+
+    const catIndex = categories.findIndex(c => c.id === id);
+    if (catIndex === -1) {
+      res.status(404).json({ success: false, message: 'التصنيف غير موجود.' });
+      return;
+    }
+
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'اسم التصنيف مطلوب.' });
+      return;
+    }
+
+    const oldName = categories[catIndex].name;
+    const newName = name.trim();
+
+    categories[catIndex] = {
+      ...categories[catIndex],
+      name: newName,
+      description: description !== undefined ? description.trim() : categories[catIndex].description
+    };
+
+    if (oldName !== newName) {
+      products = products.map(p => p.category === oldName ? { ...p, category: newName } : p);
+    }
+
+    res.json({ success: true, category: categories[catIndex] });
+  });
+
+  // -------------------------------------------------------------
+  // 9. مسارات حركات المخزون والإدخال والإخراج (/api/stock-movements)
+  // -------------------------------------------------------------
+
+  app.get('/api/stock-movements', (req, res) => {
+    res.json({ success: true, stockMovements });
+  });
+
+  app.post('/api/stock-movements', (req, res) => {
+    const { type, productId, quantity, warehouseId, notes, recordedBy } = req.body;
+    if (!type || !productId || quantity === undefined || !warehouseId) {
+      res.status(400).json({ success: false, message: 'معطيات حركة المخزون ناقصة.' });
+      return;
+    }
+
+    const prod = products.find(p => p.id === productId);
+    if (!prod) {
+      res.status(404).json({ success: false, message: 'المنتج غير موجود.' });
+      return;
+    }
+
+    const wh = warehouses.find(w => w.id === warehouseId);
+    if (!wh) {
+      res.status(404).json({ success: false, message: 'المستودع غير موجود.' });
+      return;
+    }
+
+    const qtyNum = Number(quantity);
+    if (type === 'out' && prod.quantity < qtyNum) {
+      res.status(400).json({ success: false, message: 'الكمية المطلوبة للصرف غير متوفرة بالكامل بالمخزن.' });
+      return;
+    }
+
+    if (type === 'in') {
+      prod.quantity += qtyNum;
+    } else {
+      prod.quantity -= qtyNum;
+    }
+
+    const newMov: StockMovement = {
+      id: `MOV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+      type,
+      productId,
+      productName: prod.name,
+      quantity: qtyNum,
+      warehouseId,
+      warehouseName: wh.name,
+      notes: notes || '',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      recordedBy: recordedBy || 'مدير النظام'
+    };
+
+    stockMovements = [newMov, ...stockMovements];
+
+    const formattedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const actMsg = type === 'in' 
+      ? `توريد شحنة منتج "${prod.name}" بمقدار ${qtyNum} وحدة إلى "${wh.name}".`
+      : `صرف/إخراج منتج "${prod.name}" بمقدار ${qtyNum} وحدة من "${wh.name}".`;
+    
+    const newActivity = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'stock_update' as const,
+      message: actMsg,
+      timestamp: formattedTime,
+      meta: newMov.id
+    };
+    activities = [newActivity, ...activities];
+
+    res.status(201).json({ success: true, movement: newMov, product: prod });
+  });
+
+  // -------------------------------------------------------------
+  // 10. تكامل خادم Vite ومخرجات البناء (React Vite Integration)
+  // -------------------------------------------------------------
+
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Backend Server] Server running successfully on http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('[Error Starting Server]', err);
+});
