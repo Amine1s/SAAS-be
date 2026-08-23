@@ -485,6 +485,32 @@ app.post('/api/warehouses', (req: Request, res: Response) => {
     suppliers.push(newSupplier);
     res.status(201).json({ success: true, supplier: newSupplier });
   });
+   app.put('/api/suppliers/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, company, phone, email } = req.body;
+
+    const supIndex = suppliers.findIndex(s => s.id === id);
+    if (supIndex === -1) {
+      res.status(404).json({ success: false, message: 'المورد المطلوب تعديله غير موجود.' });
+      return;
+    }
+
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'اسم المورد مطلوب.' });
+      return;
+    }
+
+    const updatedSupplier: Supplier = {
+      ...suppliers[supIndex],
+      name: name.trim(),
+      company: company !== undefined ? company.trim() : suppliers[supIndex].company,
+      phone: phone !== undefined ? phone.trim() : suppliers[supIndex].phone,
+      email: email !== undefined ? email.trim() : suppliers[supIndex].email
+    };
+
+    suppliers[supIndex] = updatedSupplier;
+    res.json({ success: true, supplier: updatedSupplier });
+  });
 
   // 7. إدارة العملاء
   app.get('/api/customers', (req, res) => {
@@ -507,7 +533,33 @@ app.post('/api/warehouses', (req: Request, res: Response) => {
     customers.push(newCustomer);
     res.status(201).json({ success: true, customer: newCustomer });
   });
+ 
+  app.put('/api/customers/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, phone, email, taxNumber } = req.body;
 
+    const custIndex = customers.findIndex(c => c.id === id);
+    if (custIndex === -1) {
+      res.status(404).json({ success: false, message: 'العميل المطلوب تعديله غير موجود.' });
+      return;
+    }
+
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'اسم العميل مطلوب.' });
+      return;
+    }
+
+    const updatedCustomer: Customer = {
+      ...customers[custIndex],
+      name: name.trim(),
+      phone: phone !== undefined ? phone.trim() : customers[custIndex].phone,
+      email: email !== undefined ? email.trim() : customers[custIndex].email,
+      taxNumber: taxNumber !== undefined ? taxNumber.trim() : customers[custIndex].taxNumber
+    };
+
+    customers[custIndex] = updatedCustomer;
+    res.json({ success: true, customer: updatedCustomer });
+  });
   // 8. إدارة عائلات وتصنيفات السلع
   app.get('/api/categories', (req, res) => {
     res.json({ success: true, categories });
