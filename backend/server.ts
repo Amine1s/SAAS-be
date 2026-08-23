@@ -239,6 +239,75 @@ app.patch('/api/products/:id/stock', (req: Request, res: Response) => {
   res.json({ success: true, product: products[prodIndex] });
 });
 
+ // تعديل وتحديث بيانات صنف منتج بالكامل
+  app.put('/api/products/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { name, sku, price, quantity, description, category, warehouseId, supplierId } = req.body;
+
+    const prodIndex = products.findIndex(p => p.id === id);
+    if (prodIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'المنتج المطلوب تعديله غير موجود.'
+      });
+    }
+
+    if (!name || !sku || price === undefined || quantity === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'جميع الحقول الأساسية مطلوبة (الاسم، SKU، السعر، والكمية).'
+      });
+    }
+
+    const trimmedSku = sku.trim().toUpperCase();
+    // التحقق من عدم تكرار رمز SKU مع منتج آخر غير المنتج الحالي
+    if (products.some(p => p.id !== id && p.sku.toUpperCase() === trimmedSku)) {
+      return res.status(409).json({
+        success: false,
+        message: 'خطأ: رمز SKU هذا مستخدم مسبقاً لصنف آخر.'
+      });
+    }
+
+    const oldProduct = products[prodIndex];
+    const newQty = Number(quantity);
+    const qtyDiff = newQty - oldProduct.quantity;
+
+    const updatedProduct: Product = {
+      ...oldProduct,
+      name: name.trim(),
+      sku: trimmedSku,
+      price: Number(price),
+      quantity: newQty,
+      description: description !== undefined ? description.trim() : oldProduct.description,
+      category: category || oldProduct.category,
+      warehouseId: warehouseId || oldProduct.warehouseId,
+      supplierId: supplierId || oldProduct.supplierId
+    };
+
+    products[prodIndex] = updatedProduct;
+
+    // إذا تغيرت الكمية نسجل حركة تسوية مخزنية
+    if (qtyDiff !== 0) {
+      const wh = warehouses.find(w => w.id === updatedProduct.warehouseId);
+      const whName = wh ? wh.name : 'المستودع الرئيسي';
+      const adjustmentMov: StockMovement = {
+        id: `MOV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+        type: qtyDiff > 0 ? 'in' : 'out',
+        productId: updatedProduct.id,
+        productName: updatedProduct.name,
+        quantity: Math.abs(qtyDiff),
+        warehouseId: updatedProduct.warehouseId || 'WH-01',
+        warehouseName: whName,
+        notes: `تسوية كمية يدوية بعد تعديل بيانات الصنف (الفرق: ${qtyDiff > 0 ? '+' : ''}${qtyDiff})`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        recordedBy: 'مدير النظام'
+      };
+      stockMovements = [adjustmentMov, ...stockMovements];
+    }
+
+    res.json({ success: true, product: updatedProduct });
+  });
+// 2. جلب وإصدار الفواتير
 app.get('/api/invoices', (req: Request, res: Response) => {
   res.json({ success: true, invoices });
 });
@@ -385,143 +454,207 @@ app.post('/api/warehouses', (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'اسم المستودع مطلوب.' });
   }
   const newWH: Warehouse = {
-    id: `WH-${(warehouses.length + 1).toString().padStart(2, '0')}`,
-    name: name.trim(),
-    location: location?.trim() || 'غير محدد',
-    capacity: Number(capacity) || 1000,
-    description: description?.trim() || ''
-  };
-  warehouses.push(newWH);
-  res.status(201).json({ success: true, warehouse: newWH });
-});
+      id: `WH-${(warehouses.length + 1).toString().padStart(2, '0')}`,
+      name: name.trim(),
+      location: location?.trim() || 'غير محدد',
+      capacity: Number(capacity) || 1000,
+      description: description?.trim() || ''
+    };
+    warehouses.push(newWH);
+    res.status(201).json({ success: true, warehouse: newWH });
+  });
 
-app.get('/api/suppliers', (req: Request, res: Response) => {
-  res.json({ success: true, suppliers });
-});
+  // 6. إدارة الموردين
+  app.get('/api/suppliers', (req, res) => {
+    res.json({ success: true, suppliers });
+  });
 
-app.post('/api/suppliers', (req: Request, res: Response) => {
-  const { name, company, phone, email } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, message: 'اسم المورد مطلوب.' });
-  }
-  const newSupplier: Supplier = {
-    id: `SUP-${(suppliers.length + 1).toString().padStart(2, '0')}`,
-    name: name.trim(),
-    company: company?.trim() || '',
-    phone: phone?.trim() || '',
-    email: email?.trim() || ''
-  };
-  suppliers.push(newSupplier);
-  res.status(201).json({ success: true, supplier: newSupplier });
-});
+  app.post('/api/suppliers', (req, res) => {
+    const { name, company, phone, email } = req.body;
+    if (!name) {
+      res.status(400).json({ success: false, message: 'اسم المورد مطلوب.' });
+      return;
+    }
+    const newSupplier: Supplier = {
+      id: `SUP-${(suppliers.length + 1).toString().padStart(2, '0')}`,
+      name: name.trim(),
+      company: company?.trim() || '',
+      phone: phone?.trim() || '',
+      email: email?.trim() || ''
+    };
+    suppliers.push(newSupplier);
+    res.status(201).json({ success: true, supplier: newSupplier });
+  });
 
-app.get('/api/customers', (req: Request, res: Response) => {
-  res.json({ success: true, customers });
-});
+  // 7. إدارة العملاء
+  app.get('/api/customers', (req, res) => {
+    res.json({ success: true, customers });
+  });
 
-app.post('/api/customers', (req: Request, res: Response) => {
-  const { name, phone, email, taxNumber } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, message: 'اسم العميل مطلوب.' });
-  }
-  const newCustomer: Customer = {
-    id: `CUST-${(customers.length + 1).toString().padStart(2, '0')}`,
-    name: name.trim(),
-    phone: phone?.trim() || '',
-    email: email?.trim() || '',
-    taxNumber: taxNumber?.trim() || ''
-  };
-  customers.push(newCustomer);
-  res.status(201).json({ success: true, customer: newCustomer });
-});
+  app.post('/api/customers', (req, res) => {
+    const { name, phone, email, taxNumber } = req.body;
+    if (!name) {
+      res.status(400).json({ success: false, message: 'اسم العميل مطلوب.' });
+      return;
+    }
+    const newCustomer: Customer = {
+      id: `CUST-${(customers.length + 1).toString().padStart(2, '0')}`,
+      name: name.trim(),
+      phone: phone?.trim() || '',
+      email: email?.trim() || '',
+      taxNumber: taxNumber?.trim() || ''
+    };
+    customers.push(newCustomer);
+    res.status(201).json({ success: true, customer: newCustomer });
+  });
 
-app.get('/api/categories', (req: Request, res: Response) => {
-  res.json({ success: true, categories });
-});
+  // 8. إدارة عائلات وتصنيفات السلع
+  app.get('/api/categories', (req, res) => {
+    res.json({ success: true, categories });
+  });
 
-app.post('/api/categories', (req: Request, res: Response) => {
-  const { name, description } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, message: 'اسم التصنيف مطلوب.' });
-  }
-  const newCat: Category = {
-    id: `CAT-${(categories.length + 1).toString().padStart(2, '0')}`,
-    name: name.trim(),
-    description: description?.trim() || ''
-  };
-  categories.push(newCat);
-  res.status(201).json({ success: true, category: newCat });
-});
+  app.post('/api/categories', (req, res) => {
+    const { name, description } = req.body;
+    if (!name) {
+      res.status(400).json({ success: false, message: 'اسم التصنيف مطلوب.' });
+      return;
+    }
+    const newCat: Category = {
+      id: `CAT-${(categories.length + 1).toString().padStart(2, '0')}`,
+      name: name.trim(),
+      description: description?.trim() || ''
+    };
+    categories.push(newCat);
+    res.status(201).json({ success: true, category: newCat });
+  });
 
-app.get('/api/stock-movements', (req: Request, res: Response) => {
-  res.json({ success: true, stockMovements });
-});
+  app.put('/api/categories/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, description } = req.body;
 
-app.post('/api/stock-movements', (req: Request, res: Response) => {
-  const { type, productId, quantity, warehouseId, notes, recordedBy } = req.body;
-  if (!type || !productId || quantity === undefined || !warehouseId) {
-    return res.status(400).json({ success: false, message: 'معطيات حركة المخزون ناقصة.' });
-  }
+    const catIndex = categories.findIndex(c => c.id === id);
+    if (catIndex === -1) {
+      res.status(404).json({ success: false, message: 'التصنيف غير موجود.' });
+      return;
+    }
 
-  const prod = products.find(p => p.id === productId);
-  if (!prod) {
-    return res.status(404).json({ success: false, message: 'المنتج غير موجود.' });
-  }
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'اسم التصنيف مطلوب.' });
+      return;
+    }
 
-  const wh = warehouses.find(w => w.id === warehouseId);
-  if (!wh) {
-    return res.status(404).json({ success: false, message: 'المستودع غير موجود.' });
-  }
+    const oldName = categories[catIndex].name;
+    const newName = name.trim();
 
-  const qtyNum = Number(quantity);
-  if (type === 'out' && prod.quantity < qtyNum) {
-    return res.status(400).json({ success: false, message: 'الكمية المطلوبة للصرف غير متوفرة بالكامل بالمخزن.' });
-  }
+    categories[catIndex] = {
+      ...categories[catIndex],
+      name: newName,
+      description: description !== undefined ? description.trim() : categories[catIndex].description
+    };
 
-  if (type === 'in') {
-    prod.quantity += qtyNum;
+    // إذا تغير اسم الفئة، نقوم بتحديث أسماء الفئات المرتبطة في المنتجات
+    if (oldName !== newName) {
+      products = products.map(p => p.category === oldName ? { ...p, category: newName } : p);
+    }
+
+    res.json({ success: true, category: categories[catIndex] });
+  });
+
+  // 9. حركات المخزون والإدخال والإخراج الفوري
+  app.get('/api/stock-movements', (req, res) => {
+    res.json({ success: true, stockMovements });
+  });
+
+  app.post('/api/stock-movements', (req, res) => {
+    const { type, productId, quantity, warehouseId, notes, recordedBy } = req.body;
+    if (!type || !productId || quantity === undefined || !warehouseId) {
+      res.status(400).json({ success: false, message: 'معطيات حركة المخزون ناقصة.' });
+      return;
+    }
+
+    const prod = products.find(p => p.id === productId);
+    if (!prod) {
+      res.status(404).json({ success: false, message: 'المنتج غير موجود.' });
+      return;
+    }
+
+    const wh = warehouses.find(w => w.id === warehouseId);
+    if (!wh) {
+      res.status(404).json({ success: false, message: 'المستودع غير موجود.' });
+      return;
+    }
+
+    const qtyNum = Number(quantity);
+    if (type === 'out' && prod.quantity < qtyNum) {
+      res.status(400).json({ success: false, message: 'الكمية المطلوبة للصرف غير متوفرة بالكامل بالمخزن.' });
+      return;
+    }
+
+    if (type === 'in') {
+      prod.quantity += qtyNum;
+    } else {
+      prod.quantity -= qtyNum;
+    }
+
+    const newMov: StockMovement = {
+      id: `MOV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+      type,
+      productId,
+      productName: prod.name,
+      quantity: qtyNum,
+      warehouseId,
+      warehouseName: wh.name,
+      notes: notes || '',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      recordedBy: recordedBy || 'مدير النظام'
+    };
+
+    stockMovements = [newMov, ...stockMovements];
+
+    // إضافة نشاط
+    const formattedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const actMsg = type === 'in' 
+      ? `توريد شحنة منتج "${prod.name}" بمقدار ${qtyNum} وحدة إلى "${wh.name}".`
+      : `صرف/إخراج منتج "${prod.name}" بمقدار ${qtyNum} وحدة من "${wh.name}".`;
+    
+    const newActivity = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'stock_update' as const,
+      message: actMsg,
+      timestamp: formattedTime,
+      meta: newMov.id
+    };
+    activities = [newActivity, ...activities];
+
+    res.status(201).json({ success: true, movement: newMov, product: prod });
+  });
+
+
+  // -------------------------------------------------------------
+  // تكامل خادم Vite ومخرجات البناء (React Vite Integration)
+  // -------------------------------------------------------------
+
+  if (process.env.NODE_ENV !== 'production') {
+    // تشغيل Vite كميدلوير أثناء التطوير للحصول على التحديث الساخن والسرعة
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
   } else {
-    prod.quantity -= qtyNum;
+    // تقديم ملفات الإنتاج الجاهزة بعد البناء
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
 
-  const newMov: StockMovement = {
-    id: `MOV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
-    type,
-    productId,
-    productName: prod.name,
-    quantity: qtyNum,
-    warehouseId,
-    warehouseName: wh.name,
-    notes: notes || '',
-    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-    recordedBy: recordedBy || 'مدير النظام'
-  };
-
-  stockMovements = [newMov, ...stockMovements];
-
-  const formattedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-  const actMsg = type === 'in' 
-    ? `توريد شحنة منتج "${prod.name}" بمقدار ${qtyNum} وحدة إلى "${wh.name}".`
-    : `صرف/إخراج منتج "${prod.name}" بمقدار ${qtyNum} وحدة من "${wh.name}".`;
-  
-  const newActivity = {
-    id: Math.random().toString(36).substring(2, 9),
-    type: 'stock_update' as const,
-    message: actMsg,
-    timestamp: formattedTime,
-    meta: newMov.id
-  };
-  activities = [newActivity, ...activities];
-
-  res.status(201).json({ success: true, movement: newMov, product: prod });
-});
-
-// بدء تشغيل السيرفر (في بيئة التطوير)
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Backend Server] Standalone API Server running on port ${PORT}`);
+    console.log(`[Backend Server] Server running successfully on http://localhost:${PORT}`);
   });
 }
 
-export default app;
-
+startServer().catch((err) => {
+  console.error('[Error Starting Server]', err);
+});
